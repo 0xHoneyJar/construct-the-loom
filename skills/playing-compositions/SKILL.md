@@ -34,7 +34,7 @@ loom --help           → usage
 
 ## The Lego doctrine (load-bearing — operator-canonical, applied at every fit-check)
 
-Per `~/hivemind/wiki/concepts/composable-expertise-legos.md` (operator-coined 2026-04-21, reaffirmed 2026-04-28). **Compositions are not fixed pipelines. They are Lego blocks already strung together. The art is detaching some, attaching others, suggesting new ones.**
+Per `~/vault/wiki/concepts/composable-expertise-legos.md` (operator-coined 2026-04-21, reaffirmed 2026-04-28). **Compositions are not fixed pipelines. They are Lego blocks already strung together. The art is detaching some, attaching others, suggesting new ones.**
 
 When an operator asks for a workflow, run this fit-check BEFORE firing:
 
