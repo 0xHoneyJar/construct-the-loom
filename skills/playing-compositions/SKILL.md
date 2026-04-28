@@ -1,6 +1,6 @@
 ---
 name: playing-compositions
-description: Play loa-compositions via the `loom` CLI — the spell-book × deck-builder surface. Browse the 5-card hand (recents + pinned), open the full palette via fzf, invoke a composition with a live progress ribbon, inspect recipes (yaml), pin/unpin to home view. Trigger phrases include "fire <composition>", "what compositions exist", "run audit-feel", "show me the loom", "play <composition>", "pin this composition". Wraps `compose-run.sh` with operator-friendly semantics. NOT for authoring NEW compositions (use the-weaver/composing-paths) or validating syntax (use loa-compositions/scripts/validate.sh).
+description: Play loa-compositions via the `loom` CLI — the spell-book × deck-builder surface. Browse the 5-card hand (recents + pinned), open the full palette via fzf, invoke a composition with a live progress ribbon, inspect recipes (yaml), pin/unpin to home view. APPLIES THE LEGO DOCTRINE — when an operator asks for a workflow, run a fit-check (100% fire / 95% fork / 50-95% suggest extension / <50% author) BEFORE firing. Compositions are detachable, recomposable Lego blocks; no glue between studs/holes. Trigger phrases include "fire <composition>", "what compositions exist", "is there a composition for X", "run audit-feel", "show me the loom", "play <composition>", "extend <composition>", "pin this composition". Wraps `compose-run.sh` with operator-friendly semantics. NOT for authoring NEW compositions from scratch (use the-weaver/composing-paths) or validating syntax (use loa-compositions/scripts/validate.sh).
 user-invocable: true
 allowed-tools: Bash, Read
 ---
@@ -29,6 +29,48 @@ loom --help           → usage
 - Operator says "fire <name>" / "play <name>" / "run <name>"
 - Operator wants to manage their hand (pin / unpin / recents)
 - Operator wants to inspect a composition's recipe before playing
+- Operator asks "is there a composition for X?" — apply the Lego doctrine fit-check (below)
+- Operator asks "extend <composition>" — propose the fork, don't bend the original
+
+## The Lego doctrine (load-bearing — operator-canonical, applied at every fit-check)
+
+Per `~/hivemind/wiki/concepts/composable-expertise-legos.md` (operator-coined 2026-04-21, reaffirmed 2026-04-28). **Compositions are not fixed pipelines. They are Lego blocks already strung together. The art is detaching some, attaching others, suggesting new ones.**
+
+When an operator asks for a workflow, run this fit-check BEFORE firing:
+
+| match | move | rationale |
+|---|---|---|
+| 🟢 100% fit | **fire** | the existing composition covers it cleanly. dispatch and watch the ribbon. |
+| 🟡 95% fit (one stage off) | **fork** — copy yaml, swap stage, save with new slug | don't bend the original. the seam is the fork. validate before firing. |
+| 🟠 50-95% fit (real gap) | **suggest extension** — propose the fork yaml + name the gap to operator | the operator decides whether to ship the fork or revisit the request |
+| 🔴 <50% fit (or no match) | **author new** — keep lightweight, schema-respecting | only when no existing composition is in the neighborhood |
+| 🚫 chain doesn't snap (studs/holes mismatch) | **the chain is wrong-shaped** — fork. don't paper over with adapter code | no glue — if studs and holes don't fit, the composition is asking for something the constructs can't deliver |
+
+**Standard studs** (what a stage produces): `streams.writes`, `events.emits`, declared `outputs`. **Standard holes** (what a stage consumes): `streams.reads`, `events.consumes`, declared `inputs`. Two stages snap if studs match holes.
+
+When firing a forked or new composition, ALWAYS run `~/bonfire/loa-compositions/scripts/validate.sh` first.
+
+## Fit-check workflow
+
+```bash
+# 1. Survey the deck
+loom all                          # fzf palette over the registry
+
+# 2. Inspect the candidate
+loom inspect <slug>               # recipe card + full yaml — read inputs + chain stages
+
+# 3. Decide per the table above:
+#    - 100% fit:  loom <slug>
+#    - 95% fork:  cp <slug>.yaml <new-slug>.yaml; edit; validate; loom <new-slug>
+#    - 50-95% extension: surface to operator with the proposed fork yaml
+#    - <50%:      surface gap; pivot to the-weaver if author-new is justified
+
+# 4. If forked or extended: validate before firing
+~/bonfire/loa-compositions/scripts/validate.sh
+
+# 5. Fire
+loom <chosen-slug>
+```
 
 ## When NOT to use
 
@@ -78,6 +120,9 @@ State after each play:
 - **Speaking in marketer voice.** DEALER is matter-of-fact. "✓ complete" not "🎉 awesome — your composition succeeded!" Banned: 'unfortunately', 'happy to', 'I would suggest', exclamation marks for things that aren't actual surprises.
 - **Auto-pinning recently-played.** The pin is operator-curation, not history. Recents and pinned are different lists for a reason.
 - **Silently retrying on failure.** If a composition fails, surface it. Operator decides whether to re-fire.
+- **Skipping the Lego fit-check.** Don't blindly fire the first matching composition. If it's 95%, fork. If it's 50%, surface the gap. The fit-check is what makes compositions a Lego system instead of a fixed-pipeline catalog.
+- **Glue code between stages.** If a chain needs adapter logic between stages because the studs and holes don't match, the chain is wrong-shaped — fork or refactor the constructs upstream. The "no glue" rule is load-bearing for the Lego doctrine to hold.
+- **Authoring new compositions when an existing one is 95% fit.** Forking is cheaper, traceable (`derived_from:` field), and preserves the fix-upstream path. Only author from scratch when there's no Lego-neighborhood at all.
 
 ## Composes with
 
