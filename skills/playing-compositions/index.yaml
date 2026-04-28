@@ -1,0 +1,51 @@
+name: playing-compositions
+slug: playing-compositions
+construct: the-loom
+persona: DEALER
+status: active
+version: 0.1.0
+
+description: |
+  Play loa-compositions via the `loom` CLI. Browse the 5-card hand (recents + pinned),
+  open the full palette via fzf, invoke a composition with a live progress ribbon.
+  Wraps compose-run.sh with operator-friendly semantics.
+
+triggers:
+  - "fire <composition>"
+  - "play <composition>"
+  - "run <composition>"
+  - "what compositions exist"
+  - "show me the loom"
+  - "pin this composition"
+  - "loom <anything>"
+
+streams:
+  reads:
+    - Intent          # operator command
+    - Artifact        # composition.yaml from registry
+  writes:
+    - Verdict         # final pass/fail
+    - Signal          # per-stage transitions (ribbon source)
+    - Artifact        # orchestrator.jsonl trajectory
+
+invocation:
+  bin: bin/loom
+  command: /loom
+
+composes_with:
+  upstream:
+    - the-weaver/composing-paths   # emits compositions this skill plays
+  downstream:
+    - observer/listening           # consumes trajectories on failure
+    - construct-creator/creating-constructs  # gap-routes missing constructs
+  substrate:
+    - compose-run.sh
+    - composition.schema.json
+
+anti_patterns:
+  - "Re-implementing compose-run logic in the skill"
+  - "Hand size > 5"
+  - "Fake recipe-card thumbnails"
+  - "Marketer voice ('🎉 awesome'); DEALER is matter-of-fact"
+  - "Auto-pinning recently-played"
+  - "Silent retry on failure"

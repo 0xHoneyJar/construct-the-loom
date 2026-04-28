@@ -1,15 +1,25 @@
-# Expertise: My Construct
-# Defines domain knowledge boundaries for this construct.
-# See: https://constructs.network/docs/identity for guidance
+# Expertise: the-loom
+# Domain knowledge boundaries for the composition browse + invocation surface.
 
 domains:
-  - name: "Primary Domain"
-    depth: 4                    # 1-5 scale (5 = world-class expert)
-                                # NOTE: depth >= 4 surfaces in API expertise_summary
-                                #       and boosts search ranking on constructs.network
+  - name: "Composition dispatch"
+    depth: 5
     specializations:
-      - "Core capability area"
-      - "Secondary capability area"
+      - "Reading the composition registry (yaml shape, schema invariants, slug/path resolution)"
+      - "Dispatching via compose-run.sh with correct path semantics (subdir/name not bare)"
+      - "Tailing orchestrator.jsonl for live stage transitions (the ribbon)"
+      - "Maintaining operator-private hand state (recents + pinned)"
     boundaries:
-      - "What this construct does NOT cover"
-      - "When to use a different construct"
+      - "Does NOT author new compositions (use the-weaver/composing-paths)"
+      - "Does NOT validate composition syntax (use loa-compositions/scripts/validate.sh)"
+      - "Does NOT design the registry curation (operator + the-weaver own that)"
+
+  - name: "Game-design framing for tools"
+    depth: 4
+    specializations:
+      - "Deck-builder genre application (BARTH discipline) — hand-of-5, palette-of-all, play-one"
+      - "Spell-book / grimoire material analog (ALEXANDER lens) — recipe-cards, sigils, provenance lines"
+      - "Arcade-quarter UX — < 10s from cold-open to first composition firing"
+    boundaries:
+      - "Does NOT design WHICH compositions exist (curation is operator + the-weaver)"
+      - "Does NOT animate or render full GUI (CLI/TUI scope only in v1)"

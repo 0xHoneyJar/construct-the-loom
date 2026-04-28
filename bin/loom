@@ -1,0 +1,308 @@
+#!/usr/bin/env bash
+# loom — v0 prototype of the-loom: arcade-quarter palette + live ribbon for compositions
+#
+# Authored: 2026-04-28 by composition-grok-surface team verdict (barth + ostrom + beauvoir + lexicographer + alexander)
+# Genre: deck-builder (BARTH) × spell-book (ALEXANDER)
+#
+# v0 ships THREE things (BARTH cut):
+#   1. ⌨️  / palette with fuzzy search over compositions/*.yaml
+#   2. 🎀 live progress ribbon during run (tails orchestrator.jsonl)
+#   3. 🏠 "recents + pinned" 5-card home view
+#
+# Cut to v2: drag-stack composing UI, full grimoire spread, combos, badges, sharing.
+#
+# Reads:  ~/bonfire/loa-compositions/compositions/**/*.yaml (the registry)
+# Writes: ~/.config/loom/state.json (recents + pinned)
+# Calls:  ~/Documents/GitHub/loa-constructs/.claude/scripts/compose-run.sh
+# Tails:  .run/compose/<run_id>/orchestrator.jsonl (live ribbon source)
+
+set -euo pipefail
+
+# --- config -------------------------------------------------------------------
+COMPOSITIONS_DIR="${LOOM_COMPOSITIONS_DIR:-$HOME/bonfire/loa-compositions/compositions}"
+COMPOSE_RUN="${LOOM_COMPOSE_RUN:-$HOME/Documents/GitHub/loa-constructs/.claude/scripts/compose-run.sh}"
+STATE="${LOOM_STATE:-$HOME/.config/loom/state.json}"
+HAND_SIZE="${LOOM_HAND_SIZE:-5}"
+
+# --- helpers ------------------------------------------------------------------
+die() { echo "✗ $*" >&2; exit 1; }
+
+ensure_state() {
+    [[ -f "$STATE" ]] || { mkdir -p "$(dirname "$STATE")"; echo '{"recents":[],"pinned":[]}' > "$STATE"; }
+}
+
+list_all() {
+    # All compositions: <name>\t<path>\t<intent first line>
+    # Use process-sub + while to avoid SIGPIPE with downstream early-exit consumers
+    local f name intent
+    while IFS= read -r f; do
+        name=$(yq -r '.name // ""' "$f" 2>/dev/null)
+        intent=$(yq -r '.description // .intent // ""' "$f" 2>/dev/null | head -1 | cut -c1-80)
+        [[ -n "$name" ]] && printf '%s\t%s\t%s\n' "$name" "$f" "$intent"
+    done < <(find "$COMPOSITIONS_DIR" -name "*.yaml" -type f 2>/dev/null)
+}
+
+find_yaml() {
+    # Look up a single composition by name; avoids SIGPIPE from list_all|awk-exit pattern
+    local target="$1" f name
+    while IFS= read -r f; do
+        name=$(yq -r '.name // ""' "$f" 2>/dev/null)
+        if [[ "$name" == "$target" ]]; then
+            echo "$f"
+            return 0
+        fi
+    done < <(find "$COMPOSITIONS_DIR" -name "*.yaml" -type f 2>/dev/null)
+    return 1
+}
+
+card_for() {
+    # Render one composition as a card (gum-styled)
+    local name="$1"
+    local f
+    f=$(find_yaml "$name")
+    [[ -z "$f" ]] && { gum style --border normal --padding "0 1" "✗ not found: $name"; return 1; }
+
+    local intent stages provenance
+    intent=$(yq -r '.description // ""' "$f" | head -1 | cut -c1-60)
+    stages=$(yq -r '.chain[].construct // .chain[].invokes' "$f" 2>/dev/null | head -5 | tr '\n' '·' | sed 's/·$//; s/·/ · /g')
+    provenance=$(jq -r --arg n "$name" '[.recents[] | select(.==$n)] | length' "$STATE" 2>/dev/null || echo "0")
+
+    gum style --border rounded --padding "0 2" --margin "0" --foreground 212 \
+        "🪡 $name" \
+        "" \
+        "$intent" \
+        "" \
+        "ingredients · ${stages}" \
+        "invoked ${provenance}×"
+}
+
+hand() {
+    # The 5-card hand: pinned first, then recents, deduplicated
+    jq -r --argjson n "$HAND_SIZE" \
+        '(.pinned + .recents) | unique_by(.) | .[0:$n] | .[]' \
+        "$STATE" 2>/dev/null
+}
+
+push_recent() {
+    local name="$1"
+    local tmp
+    tmp=$(mktemp)
+    jq --arg n "$name" --argjson keep 20 \
+        '.recents = ([$n] + (.recents | map(select(.!=$n))))[0:$keep]' \
+        "$STATE" > "$tmp" && mv "$tmp" "$STATE"
+}
+
+ribbon() {
+    # Tail orchestrator.jsonl, render a live single-line ribbon as stages tick
+    local jsonl="$1"
+    local stages_seen=()
+    while IFS= read -r line; do
+        local event stage status
+        event=$(echo "$line" | jq -r '.event // ""' 2>/dev/null)
+        stage=$(echo "$line" | jq -r '.stage // .stage_name // ""' 2>/dev/null)
+        status=$(echo "$line" | jq -r '.status // ""' 2>/dev/null)
+        [[ -z "$stage" ]] && continue
+        case "$status" in
+            running|started)  glyph="⏳" ;;
+            ok|success|done)  glyph="✓"  ;;
+            fail|error)       glyph="✗"  ;;
+            *)                glyph="·"  ;;
+        esac
+        # Ribbon line — overwrite same line via \r
+        stages_seen+=("$glyph $stage")
+        printf "\r🎀 %s\033[K" "$(IFS=$' → '; echo "${stages_seen[*]}")"
+    done < <(tail -f "$jsonl" 2>/dev/null & echo $! > /tmp/loom-tail.pid; wait)
+    echo
+}
+
+# --- subcommands --------------------------------------------------------------
+cmd_help() {
+    cat <<EOF
+🪡 loom — composition deck-builder (v0)
+
+usage:
+  loom                 open the spell-book — 5-card hand (recents + pinned)
+  loom all             fuzzy palette over ALL compositions
+  loom <name>          invoke a composition with live ribbon
+  loom inspect <name>  show the recipe (yaml)
+  loom pin <name>      pin to home view
+  loom unpin <name>    remove from pins
+  loom recents         show recent invocations
+  loom --help / -h     this
+
+env:
+  LOOM_COMPOSITIONS_DIR  default: ~/bonfire/loa-compositions/compositions
+  LOOM_COMPOSE_RUN       default: ~/Documents/GitHub/loa-constructs/.claude/scripts/compose-run.sh
+  LOOM_STATE             default: ~/.config/loom/state.json
+  LOOM_HAND_SIZE         default: 5
+
+genre: deck-builder × spell-book.
+canon: ${LOOM_COMPOSITIONS_DIR:-~/bonfire/loa-compositions/compositions}
+EOF
+}
+
+cmd_home() {
+    # The arrival surface — show the 5-card hand + invite expansion
+    ensure_state
+    local hand_list
+    hand_list=$(hand)
+    local hand_count
+    hand_count=$(echo "$hand_list" | grep -c . || true)
+
+    if [[ "$hand_count" -eq 0 ]]; then
+        gum style --border double --padding "1 2" --foreground 220 \
+            "🪡 your spell-book is empty" \
+            "" \
+            "try: loom all  →  pick something to play"
+        return 0
+    fi
+
+    gum style --foreground 212 --bold "🪡 your hand · $hand_count cards"
+    echo "$hand_list" | while read -r name; do
+        [[ -z "$name" ]] && continue
+        local intent
+        intent=$(yq -r '.description // .intent // ""' "$(find_yaml "$name")" 2>/dev/null | head -1 | cut -c1-60)
+        printf "  %s\n" "$(gum style --foreground 212 "🃏 $name") $(gum style --foreground 245 "· $intent")"
+    done
+    echo
+    echo "  $(gum style --foreground 245 "→ loom <name> to play · loom all to expand · loom inspect <name> to read")"
+}
+
+cmd_all() {
+    ensure_state
+    local choice
+    choice=$(list_all | fzf \
+        --delimiter '\t' \
+        --with-nth=1,3 \
+        --height 50% \
+        --prompt "🪡 / " \
+        --preview 'echo "{}" | cut -f2 | xargs -I{} yq "." {}' \
+        --preview-window 'right:60%:wrap' \
+        --header "deck · $(list_all | wc -l | tr -d ' ') compositions · enter to play · esc to bail")
+    [[ -z "$choice" ]] && exit 0
+    local name
+    name=$(echo "$choice" | cut -f1)
+    cmd_run "$name"
+}
+
+cmd_run() {
+    ensure_state
+    local name="$1"
+    local f
+    f=$(find_yaml "$name")
+    [[ -z "$f" ]] && die "composition not found: $name"
+
+    local run_id="loom-$(date +%s)"
+    local jsonl=".run/compose/$run_id/orchestrator.jsonl"
+
+    # compose-run expects path relative to compositions-dir (e.g. "discovery/audit-feel"), not just name
+    local rel="${f#$COMPOSITIONS_DIR/}"
+    rel="${rel%.yaml}"
+
+    gum style --border rounded --padding "0 2" --foreground 212 --bold "🃏 playing · $name" "📍 $rel"
+    push_recent "$name"
+
+    # Spawn compose-run in background, tail orchestrator.jsonl for ribbon
+    shift  # consume name from $@; leave the rest as pass-through to compose-run
+    mkdir -p ".run/compose/$run_id"
+    "$COMPOSE_RUN" "$rel" \
+        --compositions-dir "$COMPOSITIONS_DIR" \
+        --run-id "$run_id" \
+        "$@" 2>&1 | tee "$jsonl.log" &
+    local run_pid=$!
+
+    # Wait briefly for orchestrator.jsonl, then tail it
+    local tries=0
+    while [[ ! -f "$jsonl" ]] && [[ $tries -lt 20 ]]; do
+        sleep 0.5
+        tries=$((tries+1))
+    done
+
+    if [[ -f "$jsonl" ]]; then
+        # Tail in foreground until run_pid exits, render ribbon
+        local last_lines=0
+        while kill -0 "$run_pid" 2>/dev/null; do
+            local cur_lines
+            cur_lines=$(wc -l < "$jsonl" 2>/dev/null || echo 0)
+            if [[ "$cur_lines" -gt "$last_lines" ]]; then
+                local stage status glyph
+                stage=$(tail -1 "$jsonl" | jq -r '.stage // .stage_name // "·"' 2>/dev/null)
+                status=$(tail -1 "$jsonl" | jq -r '.status // ""' 2>/dev/null)
+                case "$status" in
+                    running|started) glyph="⏳" ;;
+                    ok|success|done) glyph="✓"  ;;
+                    fail|error)      glyph="✗"  ;;
+                    *)               glyph="·"  ;;
+                esac
+                printf "\r🎀 stage %d · %s %s\033[K" "$cur_lines" "$glyph" "$stage"
+                last_lines=$cur_lines
+            fi
+            sleep 0.3
+        done
+        echo
+    fi
+
+    wait "$run_pid"
+    local rc=$?
+    if [[ $rc -eq 0 ]]; then
+        gum style --foreground 82 "✓ $name complete · run_id=$run_id"
+    else
+        gum style --foreground 196 "✗ $name failed · rc=$rc · run_id=$run_id"
+    fi
+    return $rc
+}
+
+cmd_inspect() {
+    local name="$1"
+    local f
+    f=$(find_yaml "$name")
+    [[ -z "$f" ]] && die "composition not found: $name"
+    card_for "$name"
+    echo
+    yq "." "$f" | gum style --border normal --padding "0 1" --foreground 245
+}
+
+cmd_pin() {
+    ensure_state
+    local name="$1"
+    local f
+    f=$(find_yaml "$name")
+    [[ -z "$f" ]] && die "composition not found: $name"
+    local tmp
+    tmp=$(mktemp)
+    jq --arg n "$name" \
+        '.pinned = (.pinned // []) + [$n] | .pinned = (.pinned | unique)' \
+        "$STATE" > "$tmp" && mv "$tmp" "$STATE"
+    gum style --foreground 82 "📌 pinned · $name"
+}
+
+cmd_unpin() {
+    ensure_state
+    local name="$1"
+    local tmp
+    tmp=$(mktemp)
+    jq --arg n "$name" \
+        '.pinned = (.pinned // []) | map(select(.!=$n))' \
+        "$STATE" > "$tmp" && mv "$tmp" "$STATE"
+    gum style --foreground 82 "📌 unpinned · $name"
+}
+
+cmd_recents() {
+    ensure_state
+    jq -r '.recents[]?' "$STATE" | head -20 | while read -r name; do
+        [[ -z "$name" ]] && continue
+        printf "  🃏 %s\n" "$name"
+    done
+}
+
+# --- dispatch -----------------------------------------------------------------
+case "${1:-}" in
+    ""|home)         cmd_home ;;
+    all)             cmd_all ;;
+    inspect|view)    shift; cmd_inspect "${1:-}" ;;
+    pin)             shift; cmd_pin "${1:-}" ;;
+    unpin)           shift; cmd_unpin "${1:-}" ;;
+    recents)         cmd_recents ;;
+    --help|-h|help)  cmd_help ;;
+    *)               cmd_run "$@" ;;
+esac

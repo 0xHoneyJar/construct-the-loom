@@ -1,134 +1,93 @@
-# construct.yaml — Construct pack manifest
-# See: https://constructs.network/docs/schema for full reference
-# Validate: yq eval '.' construct.yaml && ajv validate -s schemas/construct.schema.json
+# construct.yaml — the-loom
+# Authored 2026-04-28 from composition-grok-surface team verdict (barth + ostrom + beauvoir + lexicographer + alexander)
+# CURATOR apprenticeship stages 4 (streams) + 5 (composition) below.
 
 schema_version: 3
 
-# CUSTOMIZE: Display name for registry and UI
-name: "Code Review Assistant"
-
-# CUSTOMIZE: URL-safe identifier (kebab-case, 2+ chars)
-slug: code-review-assistant
-
-# Semantic version — bump on each release
-version: 1.0.0
-
-# CUSTOMIZE: One-line description shown in registry search results
-description: "Catches production issues by blast radius — the top 3-5 things that would hurt your users most"
-
-# CUSTOMIZE: Storefront tagline (noun phrase, max 80 chars, no articles or superlatives)
-short_description: "Production issue triage"
-
-# CUSTOMIZE: Your name or organization
-author: your-name
-
-# SPDX license identifier
+name: "the-loom"
+slug: the-loom
+version: 0.1.0
+description: "Spell-book × deck-builder for loa-compositions. Browse, compose, invoke. Persona: DEALER."
+short_description: "Composition deck-builder"
+author: 0xHoneyJar
 license: MIT
-
-# Construct archetype — what kind of pack this is
 type: skill-pack
-
-# Network visibility — must be 'public' to appear on constructs.network
 visibility: public
 
-# Domain tags for discovery and categorization
-# See category list: marketing, development, security, analytics, documentation, operations, design, infrastructure
 domain:
-  - development
+  - design
+  - operations
 
-# Skills provided by this construct
-# Each skill maps to a directory under skills/
+# Skills — one in v1 (the dispatch + ribbon machinery).
+# Cycle 2 candidates: composing-decks (drag-stack), inspecting-recipes (yaml-flip), recalling-runs (history browse)
 skills:
-  # A minimal skill — fast code review pass
-  - slug: quick-review
-    path: skills/example-simple
+  - slug: playing-compositions
+    path: skills/playing-compositions
 
-  # A full skill — documentation generation with quality gates
-  - slug: write-docs
-    path: skills/example-full
-
-# Slash commands registered in the runtime
-# Each command maps to a markdown file under commands/
+# Slash commands
 commands:
-  - name: quick-review
-    path: commands/example-command.md
+  - name: loom
+    path: commands/loom.md
 
-# Composition — how this construct connects to others
-# The grimoire path is the interface. Constructs that share paths are composed.
+# Composition — bidirectional edges with the network.
 compose_with:
+  - slug: the-weaver
+    relationship: "Sibling — weaver authors flows + emits compositions; loom is where the weaving is browsed and invoked. Pair: weaver weaves, loom is the loom."
+  - slug: the-arcade
+    relationship: "Lineage — BARTH discipline (deck-builder genre, arcade-quarter UX) + OSTROM structural (composition algebra, ECS isolation: substrate stays blind to UX)"
+  - slug: construct-creator
+    relationship: "Gap router — when a composition is invoked but a referenced construct is missing, surface to CURATOR via gap-signal"
   - slug: observer
-    relationship: "Consumes user truth for review grounding"
+    relationship: "When a composition fails mid-chain, KEEPER consumes the trajectory as listening signal"
 
-# Grimoire paths this construct reads from and writes to.
-# SEED §12: the grimoire path IS the interface. Two constructs writing
-# to the same path compose automatically; one writing + one reading
-# forms an implicit pipe edge. Declare every real read + write here.
+# Grimoire interface — the loom reads the registry, writes run state.
 composition_paths:
+  reads:
+    - grimoires/{product}/loa-compositions/compositions/   # the registry (private moat per IP boundary)
+    - grimoires/{product}/.run/compose/                    # prior run trajectories for recall
   writes:
-    - grimoires/code-review/findings/
-  reads: []
+    - .run/compose/{run_id}/orchestrator.jsonl             # this-run trajectory (read by ribbon)
+    # Operator-private state lives at ~/.config/loom/state.json (recents + pinned)
 
-# Typed streams this construct consumes and produces (doctrine §3).
-# Five primitives: Signal · Verdict · Artifact · Intent · Operator-Model.
-# Consumed at composition-build-time by construct-compose.sh to verify
-# pipe compatibility before any stage runs. Empty arrays are legal but
-# will be flagged as pipe-ambiguous by construct-validate.sh.
+# Stream signature
 streams:
   reads:
-    - Artifact        # the pull request / diff being reviewed
-    - Operator-Model  # who the operator is — tunes depth + register
+    - Intent          # operator types `loom <name>` — the play
+    - Artifact        # composition.yaml files (the recipes)
   writes:
-    - Verdict         # the review verdict (severity-tagged findings)
+    - Verdict         # run pass/fail at chain completion
+    - Signal          # stage-by-stage transitions (the live ribbon source)
+    - Artifact        # orchestrator.jsonl trajectory written for downstream consumers
 
-# Repository metadata
 repository:
-  url: https://github.com/your-org/construct-code-review.git
-  homepage: https://constructs.network/constructs/code-review-assistant
+  url: https://github.com/0xHoneyJar/construct-the-loom.git
+  homepage: https://constructs.network/constructs/the-loom
 
-# Event bus integration
-# emits: declare what your construct produces (encouraged from day one)
-# consumes: declare what you need from other constructs (add when real)
 events:
   emits:
-    - type: forge.code-review.issues_found
-      description: Emitted when review finds issues
-  consumes: []
+    - type: the-loom.composition.played
+      description: Emitted when a composition completes (success or failure)
+    - type: the-loom.gap.surfaced
+      description: Emitted when a composition references a construct not installed locally — routes to construct-creator
+    - type: the-loom.recipe.pinned
+      description: Operator pinned a composition to the home view
+  consumes:
+    - type: the-weaver.flow.authored
+      description: Refresh the registry view when the-weaver writes a new composition.yaml
+    - type: construct.registry.changed
+      description: Re-scan compositions when constructs install/uninstall
 
-# Governance (for cross-cutting constructs like vocabulary, taste, design rules)
-# Uncomment if your construct constrains how other constructs behave
-# governs: []
-# governed_by: []
-
-# Dependencies on other construct packs (optional — Level 2)
-# Uncomment when your construct depends on another
-# pack_dependencies:
-#   - slug: observer
-#     version: ">=1.0.0"
-
-# Identity files for persona and expertise.
-#
-# The construct-invocation glossary (Tier 4 persona-handle resolution) looks
-# up personas via `identity/<HANDLE>.md` filenames — UPPERCASE_HANDLE.md per
-# convention. Examples across the ecosystem:
-#
-#   artisan/identity/ALEXANDER.md
-#   k-hole/identity/STAMETS.md
-#   observer/identity/KEEPER.md
-#
-# If your construct ships a persona, author `identity/<HANDLE>.md` so the
-# operator can invoke via `@HANDLE` or mention the persona by name. The
-# starter identity/ARCHITECT.md file in this template shows the shape.
 identity:
   persona: identity/persona.yaml
   expertise: identity/expertise.yaml
   handles:
-    - ARCHITECT
+    - DEALER
 
-# Post-install hook (optional)
-hooks:
-  post_install: scripts/install.sh
-
-# Quick start command shown after installation
 quick_start:
-  command: /quick-review
-  description: "Run a fast review of your latest changes — surfaces the top issues by blast radius"
+  command: /loom
+  description: "Open the spell-book — 5-card hand of recents + pinned. Type `loom <name>` to play."
+
+# IP boundary (load-bearing — operator decision 2026-04-28)
+# - The lens (this construct) is PUBLIC — anyone can install and bring their own compositions
+# - The curated registry at ~/bonfire/loa-compositions/compositions/ is the PRIVATE MOAT
+# - The substrate (composition.schema.json + compose-run.sh) is PUBLIC — lives in loa-constructs
